@@ -204,3 +204,8 @@ input[type=range] { width: 100%; accent-color: var(--teal); }
   .top-right { margin-left: auto; } .sidenav { top: 0; }
   .bhead { grid-template-columns: 1fr; } .steps { grid-template-columns: 1fr; } .pillars .p { grid-template-columns: 120px 1fr 36px; }
 }
+
+/* Lender policy table: four columns must fit the card width */
+table.policy th { white-space: normal; padding-left: 6px; padding-right: 6px; }
+table.policy td { padding-left: 6px; padding-right: 6px; }
+table.policy input[type=number] { width: 58px !important; }
