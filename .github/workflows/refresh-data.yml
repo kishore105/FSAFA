@@ -1,0 +1,44 @@
+name: Refresh Screener data
+
+# Re-pulls every Nifty 500 non-financial company from screener.in once a week,
+# rescores the portfolio and commits the new data. GitHub Pages then republishes
+# the site automatically.
+on:
+  schedule:
+    - cron: "30 20 * * 6"   # Saturday 20:30 UTC = Sunday 02:00 IST
+  workflow_dispatch:         # manual "Run workflow" button
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install dependencies
+        run: pip install beautifulsoup4
+      - name: Update Nifty 500 constituent list (kept as is if NSE refuses the request)
+        run: |
+          curl -sf -A "Mozilla/5.0" -o /tmp/n500.csv https://nsearchives.nseindia.com/content/indices/ind_nifty500list.csv \
+            && head -1 /tmp/n500.csv | grep -q Symbol && mv /tmp/n500.csv data/nifty500.csv || echo "NSE list not refreshed"
+      - name: Fetch statements
+        env:
+          REFRESH_ALL: "1"   # checkout resets file dates, so ignore the resume check
+        run: python fetch_screener.py | tee data/fetch_log.txt
+      - name: Score portfolio
+        run: node build_summary.js
+      - name: Commit refreshed data
+        run: |
+          git config user.name "data-refresh-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data
+          git diff --cached --quiet || git commit -m "Weekly data refresh $(date -u +%Y-%m-%d)"
+          git push

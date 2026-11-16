@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Credit Risk Monitor</title>
+<meta name="description" content="Credit risk assessment of Nifty 500 non-financial borrowers: liquidity, solvency, debt capacity, distress models, earnings quality and red flags.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css?v=6">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230e7c86'/%3E%3Cpath d='M7 22l6-7 5 4 7-9' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark"><svg width="20" height="20" viewBox="0 0 32 32"><path d="M5 23l7-8 5 4 9-11" stroke="#fff" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    <div><h1>Credit Risk Monitor</h1><small>Nifty 500 non-financial borrowers</small></div>
+  </div>
+  <div class="top-controls">
+    <div class="ctl">
+      <label for="coSearch">Borrower</label>
+      <input id="coSearch" list="coList" placeholder="Type a company name or NSE symbol" autocomplete="off">
+      <datalist id="coList"></datalist>
+    </div>
+    <div class="ctl">
+      <label for="fySel">Financial year</label>
+      <select id="fySel" disabled><option>Select a borrower</option></select>
+    </div>
+  </div>
+  <div class="top-right">
+    <span class="status-pill" id="dataStatus"><i></i>Loading data</span>
+    <button class="btn ghost-dark" id="guideBtn" title="How to use this dashboard">? Guide</button>
+  </div>
+</header>
+
+<div class="layout">
+  <nav class="sidenav" id="nav">
+    <div class="nav-group">Portfolio</div>
+    <button class="nav-item active" data-view="portfolio"><span class="ix">1</span>Portfolio monitor</button>
+    <button class="nav-item" data-view="peers" data-needs="co"><span class="ix">2</span>Peer benchmarking</button>
+    <div class="nav-group">Borrower assessment</div>
+    <button class="nav-item" data-view="summary" data-needs="co"><span class="ix">3</span>Credit summary</button>
+    <button class="nav-item" data-view="liquidity" data-needs="co"><span class="ix">4</span>Liquidity</button>
+    <button class="nav-item" data-view="solvency" data-needs="co"><span class="ix">5</span>Solvency and debt capacity</button>
+    <button class="nav-item" data-view="distress" data-needs="co"><span class="ix">6</span>Distress models</button>
+    <button class="nav-item" data-view="quality" data-needs="co"><span class="ix">7</span>Earnings quality</button>
+    <button class="nav-item" data-view="flags" data-needs="co"><span class="ix">8</span>Red flags and governance</button>
+    <div class="nav-group">Lending decision</div>
+    <button class="nav-item" data-view="bqr" data-needs="co"><span class="ix">9</span>Borrower quality rating</button>
+    <button class="nav-item" data-view="loan" data-needs="co"><span class="ix">10</span>Loan structuring and covenants</button>
+    <div class="nav-group">Data and method</div>
+    <button class="nav-item" data-view="import"><span class="ix">11</span>Import statements</button>
+    <button class="nav-item" data-view="method"><span class="ix">12</span>Methodology and sources</button>
+    <div class="side-borrower" id="sideBorrower">No borrower selected. Pick one from the portfolio table or the search box above.</div>
+    <div class="side-foot">All amounts in Rs crore. Consolidated statements where available, otherwise standalone.</div>
+  </nav>
+
+  <main>
+    <!-- 1. PORTFOLIO -->
+    <section class="view active" id="v-portfolio">
+      <div class="vh"><div><div class="crumb">Portfolio</div><h2>Portfolio monitor</h2>
+        <div class="q">Which borrowers in the coverage universe need attention first?</div></div>
+        <button class="btn" id="exportCsv">Export table (CSV)</button></div>
+      <details class="howto" open><summary>How to read this view</summary><ol>
+        <li>Each row is one borrower, scored on its latest reported financial year. The <b>BQR</b> (1 best to 10 worst) is the final rating: 60% quantitative and 40% qualitative. In this table the qualitative part uses the six factors that can be read from the data; the analyst completes the rest on tab 9.</li>
+        <li>The <b>quantitative grade</b> (CW1 Strong to CW5 Critical) combines five pillars: liquidity, solvency and debt service, distress models, earnings quality, and red flags.</li>
+        <li>Use the filters to narrow by industry, grade or Altman zone. Click a column header to sort. Click any row to open that borrower's credit summary.</li>
+        <li>The charts below the table show where risk is concentrated by industry and how the distress models agree across the portfolio.</li>
+      </ol></details>
+      <div class="grid g5 mb" id="pfKpis"></div>
+      <div class="card mb">
+        <div class="filters">
+          <div class="f"><label for="fInd">Industry</label><select id="fInd"><option value="">All industries</option></select></div>
+          <div class="f"><label for="fGrade">Grade</label><select id="fGrade"><option value="">All grades</option></select></div>
+          <div class="f"><label for="fZone">Altman zone</label><select id="fZone"><option value="">All zones</option><option>Safe</option><option>Grey</option><option>Distress</option></select></div>
+          <div class="f"><label for="fText">Search</label><input id="fText" placeholder="Name or symbol"></div>
+          <div class="f" style="margin-left:auto"><label>&nbsp;</label><span class="muted small" id="pfCount"></span></div>
+        </div>
+        <div class="tbl-wrap"><table id="pfTable"></table></div>
+        <div class="pager"><span id="pgInfo"></span><span><button class="btn sm" id="pgPrev">Previous</button> <button class="btn sm" id="pgNext">Next</button></span></div>
+      </div>
+      <div class="grid g2 mb">
+        <div class="card"><h3>Grade distribution</h3><div class="sub">Number of borrowers in each credit watch grade</div><div class="chart-box"><canvas id="chGrades"></canvas></div></div>
+        <div class="card"><h3>Distress map</h3><div class="sub">Altman Z (version suited to the industry) against Ohlson probability of distress. Bottom-right is the danger quadrant.</div><div class="chart-box"><canvas id="chMap"></canvas></div></div>
+      </div>
+      <div class="card"><h3>Risk by industry</h3><div class="sub">Median risk score and grade mix by industry. Sorted from riskiest to safest.</div><div class="tbl-wrap"><table id="indTable"></table></div></div>
+    </section>
+
+    <!-- 2. PEERS -->
+    <section class="view" id="v-peers">
+      <div class="vh"><div><div class="crumb">Portfolio</div><h2>Peer benchmarking</h2>
+        <div class="q">Is this borrower an outlier against companies in the same industry?</div></div></div>
+      <details class="howto"><summary>How to read this view</summary><ol>
+        <li>The <b>Peer Group Anomaly Index</b> places the borrower on its industry's distribution for each metric. The marker shows the percentile; the shaded ends mark the bottom and top 10%, where a value is unusual and needs an explanation.</li>
+        <li>An outlier is not bad by itself. It is a prompt to ask management why this company differs from its peers.</li>
+        <li>The comparison table lists every peer in the industry. Click a row to switch borrower.</li>
+      </ol></details>
+      <div id="peerBody"></div>
+    </section>
+
+    <!-- 3. SUMMARY -->
+    <section class="view" id="v-summary">
+      <div class="vh"><div><div class="crumb">Borrower assessment</div><h2>Credit summary</h2>
+        <div class="q">Overall view of the borrower: grade, the drivers behind it and the action it suggests.</div></div></div>
+      <details class="howto"><summary>How to read this view</summary><ol>
+        <li>The grade box shows the credit watch grade for the selected year. The five pillar bars show where the risk comes from (longer bar means more risk).</li>
+        <li>The analyst note is generated from the signals on the other tabs. Each point can be traced to a specific tab.</li>
+        <li>Change the financial year in the top bar to see how the borrower looked in earlier years.</li>
+      </ol></details>
+      <div id="sumBody"></div>
+    </section>
+
+    <!-- 4. LIQUIDITY -->
+    <section class="view" id="v-liquidity">
+      <div class="vh"><div><div class="crumb">Borrower assessment</div><h2>Liquidity</h2>
+        <div class="q">Can the borrower meet obligations falling due in the next twelve months, and is its liquidity real?</div></div></div>
+      <details class="howto"><summary>How to read this view</summary><ol>
+        <li>The signal table starts with the traditional current ratio and moves to measures that test whether liquidity is real: operating cash flow ratio, cash conversion efficiency, time-adjusted current ratio and defensive interval.</li>
+        <li>A healthy current ratio with red signals further down is the classic pattern of a borrower whose current assets are slow to turn into cash.</li>
+        <li>The realisation weights for the time-adjusted current ratio can be changed with the sliders to suit the industry.</li>
+      </ol></details>
+      <div id="liqBody"></div>
+    </section>
+
+    <!-- 5. SOLVENCY -->
+    <section class="view" id="v-solvency">
+      <div class="vh"><div><div class="crumb">Borrower assessment</div><h2>Solvency and debt capacity</h2>
+        <div class="q">Can the borrower service its debt, and how much more can it safely carry?</div></div></div>
+      <details class="howto"><summary>How to read this view</summary><ol>
+        <li>The top row shows leverage and coverage for the selected year with their signals.</li>
+        <li>The <b>debt capacity</b> panel sizes the maximum debt the borrower's cash flow can support at a target DSCR. Move the sliders to test a loan proposal. Headroom is the gap between that maximum and existing borrowings.</li>
+        <li>The debt structuring matrix places the borrower by asset strength and cash strength and shows the approach that fits.</li>
+      </ol></details>
+      <div id="solBody"></div>
+    </section>
+
+    <!-- 6. DISTRESS -->
+    <section class="view" id="v-distress">
+      <div class="vh"><div><div class="crumb">Borrower assessment</div><h2>Distress models</h2>
+        <div class="q">Do the established bankruptcy models agree that the borrower is at risk of default?</div></div></div>
+      <details class="howto"><summary>How to read this view</summary><ol>
+        <li>Five models are run side by side. Each uses a different mix of liquidity, profitability, leverage and cash flow, so agreement between them carries more weight than any single score.</li>
+        <li>The Altman version is chosen by industry: Z' (book equity, with asset turnover) for manufacturers and Z'' (without asset turnover) for service and other firms. The market-value Z is shown for the latest year.</li>
+        <li>The Ohlson panel breaks the score into its components, so the driver of the probability is visible.</li>
+      </ol></details>
+      <div id="disBody"></div>
+    </section>
+
+    <!-- 7. QUALITY -->
+    <section class="view" id="v-quality">
+      <div class="vh"><div><div class="crumb">Borrower assessment</div><h2>Earnings quality</h2>
+        <div class="q">Are the profits that will repay the loan backed by cash, and are there signs of manipulation?</div></div></div>
+      <details class="howto"><summary>How to read this view</summary><ol>
+        <li>Accrual measures come first: the higher the share of profit that is not cash, the less a lender should rely on it.</li>
+        <li>The Beneish M-score, Montier C-score and Piotroski F-score follow, with every component shown. Accrual and real earnings management are measured against the cross-section of Indian listed firms.</li>
+        <li>Benford's law tests the digit pattern of every reported number. It does not prove manipulation; it indicates where to look.</li>
+      </ol></details>
+      <div id="qBody"></div>
+    </section>
+
+    <!-- 8. FLAGS -->
+    <section class="view" id="v-flags">
+      <div class="vh"><div><div class="crumb">Borrower assessment</div><h2>Red flags and governance</h2>
+        <div class="q">Do the statements show any of the patterns seen in known Indian fraud and default cases?</div></div></div>
+      <details class="howto"><summary>How to read this view</summary><ol>
+        <li>Each check is a rule applied to the reported numbers. The evidence column shows the numbers behind the result, and the last column explains why a lender should care.</li>
+        <li>Case checks are drawn from SEBI and forensic cases: revenue inflation through subsidiaries, loan-to-equity conversion, advances to related parties and quarter-end revenue acceleration.</li>
+        <li>Behavioural checks compare the borrower with its own history rather than with a fixed threshold.</li>
+      </ol></details>
+      <div id="flBody"></div>
+    </section>
+
+    <!-- BQR -->
+    <section class="view" id="v-bqr">
+      <div class="vh"><div><div class="crumb">Lending decision</div><h2>Borrower quality rating</h2>
+        <div class="q">What is the borrower's final rating once the analyst's judgement is added to the numbers?</div></div></div>
+      <details class="howto"><summary>How to read this view</summary><ol>
+        <li>The rating combines the quantitative score from tabs 4 to 8 (60%) with a qualitative scorecard (40%) and maps the result to a 1 to 10 scale, where 1 is the best borrower.</li>
+        <li>Six qualitative factors are pre-filled from the data, with the evidence shown. Management, board and auditor cannot be read from the statements; assess them from the annual report and select a level.</li>
+        <li>A notch override of up to two grades is allowed for information outside the scorecard, with a recorded reason. Choices are saved in this browser.</li>
+      </ol></details>
+      <div id="bqrBody"></div>
+    </section>
+
+    <!-- LOAN -->
+    <section class="view" id="v-loan">
+      <div class="vh"><div><div class="crumb">Lending decision</div><h2>Loan structuring and covenants</h2>
+        <div class="q">How much can be lent, on what security, and under which covenants?</div></div></div>
+      <details class="howto"><summary>How to read this view</summary><ol>
+        <li>Choose the loan type and the proposed amount. The maximum loan is the lowest of four limits: the lender's leverage limit for the rating, the gearing limit, the DSCR-based debt capacity and, for secured loans, the security cover.</li>
+        <li>The lender's policy (limits by rating band, extra leverage allowed for secured lending, required cover and loss given default) can be edited to match the institution.</li>
+        <li>Financial covenants are tested on pro-forma figures after the loan. Non-financial covenants, such as prior consent for further borrowing, are recommended from the borrower's own red flags. Download the credit memo for the file.</li>
+      </ol></details>
+      <div id="loanBody"></div>
+    </section>
+
+    <!-- 9. IMPORT -->
+    <section class="view" id="v-import">
+      <div class="vh"><div><div class="crumb">Data and method</div><h2>Import statements</h2>
+        <div class="q">Assess a borrower that is not in the Nifty 500, or cross-check figures with Prowess or Bloomberg data.</div></div></div>
+      <div class="grid g2">
+        <div class="card">
+          <h3>1. Prepare the file</h3>
+          <div class="sub">Any source works: Prowess dx, Bloomberg, Capitaline or the annual report.</div>
+          <ol class="list-tight">
+            <li>Export the annual income statement, balance sheet and cash flow statement.</li>
+            <li>Arrange them in one sheet: first column holds the line item, the first row holds the years (oldest to newest).</li>
+            <li>Save as CSV. Amounts should be in Rs crore; use the unit selector if the source is in Rs million or lakh.</li>
+            <li>Line names are matched automatically (for example "Revenue from operations", "Finance costs", "Trade receivables"). The template lists every recognised field.</li>
+          </ol>
+          <p><button class="btn" id="dlTemplate">Download template (CSV)</button></p>
+        </div>
+        <div class="card">
+          <h3>2. Load and analyse</h3>
+          <div class="sub">The file is read in the browser and is not uploaded anywhere.</div>
+          <div class="field"><label>Company name</label><input id="impName" placeholder="e.g. Example Industries Ltd"></div>
+          <div class="grid g2">
+            <div class="field"><label>Industry</label><select id="impInd"></select></div>
+            <div class="field"><label>Units in file</label><select id="impUnit"><option value="1">Rs crore</option><option value="0.1">Rs million</option><option value="0.01">Rs lakh</option></select></div>
+          </div>
+          <div class="field"><label>CSV file</label><input type="file" id="impFile" accept=".csv,text/csv"></div>
+          <button class="btn primary" id="impGo">Analyse borrower</button>
+          <div id="impMsg" class="small" style="margin-top:10px"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 10. METHOD -->
+    <section class="view" id="v-method">
+      <div class="vh"><div><div class="crumb">Data and method</div><h2>Methodology and sources</h2>
+        <div class="q">How every figure on this dashboard is calculated, what the thresholds are and where the data comes from.</div></div></div>
+      <div id="methodBody" class="method"></div>
+    </section>
+  </main>
+</div>
+
+<!-- Guide -->
+<div class="modal-bg" id="guide">
+  <div class="modal" role="dialog" aria-labelledby="guideTitle">
+    <div class="modal-head"><h2 id="guideTitle">How to use the Credit Risk Monitor</h2>
+      <p>A credit analyst's workstation for the non-financial companies of the Nifty 500. It answers one question in stages: should this borrower be lent to, and on what terms?</p></div>
+    <div class="modal-body">
+      <ol class="steps">
+        <li><b>Start at the portfolio</b>Tab 1 ranks every borrower by Borrower Quality Rating (BQR). Filter by industry or Altman zone, then click a row.</li>
+        <li><b>Read the credit summary</b>Tab 3 gives the grade, the five pillar scores, the analyst note and the suggested action.</li>
+        <li><b>Test liquidity</b>Tab 4 checks whether current assets really turn into cash (CCE, OCF ratio, TACR, defensive interval).</li>
+        <li><b>Size the debt</b>Tab 5 shows leverage and coverage, and sizes the maximum loan at a target DSCR. Move the sliders to test a proposal.</li>
+        <li><b>Run the distress models</b>Tab 6 runs Altman, Ohlson, Zmijewski, Springate and Fulmer side by side.</li>
+        <li><b>Check earnings quality</b>Tab 7 covers accruals, Beneish, Montier, Piotroski, AEM, REM and Benford's law.</li>
+        <li><b>Review red flags</b>Tab 8 lists rule-based checks drawn from Indian fraud and default cases, with the evidence.</li>
+        <li><b>Rate the borrower</b>Tab 9 combines the numbers (60%) with a qualitative scorecard (40%) into the Borrower Quality Rating, 1 (best) to 10.</li>
+        <li><b>Structure the loan</b>Tab 10 sets the loan type, sizes the maximum loan under the lender's leverage limits, tests covenants and produces a credit memo.</li>
+        <li><b>Compare with peers</b>Tab 2 places the borrower within its industry. Tab 11 imports any other company from a CSV file.</li>
+      </ol>
+      <h4 style="margin:20px 0 8px">Reading the colours</h4>
+      <div class="legend-row">
+        <span class="sig G">Green</span> within a comfortable range
+        <span class="sig A">Amber</span> needs a question to management
+        <span class="sig R">Red</span> a concern that affects the lending decision
+        <span class="sig NA">n/a</span> data not reported
+      </div>
+      <h4 style="margin:18px 0 8px">Ratings</h4><p class="small" style="margin:0 0 8px">The <b>Borrower Quality Rating</b> (BQR 1 best to 10 worst) is the final rating: 60% quantitative and 40% qualitative. The <b>quantitative grade</b> below summarises the numbers alone.</p>
+      <div class="legend-row">
+        <span><span class="grade CW1">CW1</span> Strong</span><span><span class="grade CW2">CW2</span> Adequate</span>
+        <span><span class="grade CW3">CW3</span> Watch</span><span><span class="grade CW4">CW4</span> Weak</span><span><span class="grade CW5">CW5</span> Critical</span>
+      </div>
+      <p class="small muted" style="margin-top:14px">The grade is an internal screening score built from the signals on this dashboard. It is not a rating agency rating. Hover over any <span class="info" data-tip="Formula and threshold for the metric.">i</span> icon to see a formula; tab 12 documents every calculation.</p>
+    </div>
+    <div class="modal-foot"><label class="small muted"><input type="checkbox" id="guideHide"> Do not show on start</label><button class="btn primary" id="guideClose">Start with the portfolio</button></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="assets/models.js?v=6"></script>
+<script src="assets/app.js?v=6"></script>
+</body>
+</html>
