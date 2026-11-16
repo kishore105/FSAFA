@@ -7,7 +7,7 @@
 <meta name="description" content="Credit risk assessment of Nifty 500 non-financial borrowers: liquidity, solvency, debt capacity, distress models, earnings quality and red flags.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=6">
+<link rel="stylesheet" href="assets/style.css?v=7">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230e7c86'/%3E%3Cpath d='M7 22l6-7 5 4 7-9' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
@@ -64,7 +64,7 @@
         <div class="q">Which borrowers in the coverage universe need attention first?</div></div>
         <button class="btn" id="exportCsv">Export table (CSV)</button></div>
       <details class="howto" open><summary>How to read this view</summary><ol>
-        <li>Each row is one borrower, scored on its latest reported financial year. The <b>BQR</b> (1 best to 10 worst) is the final rating: 60% quantitative and 40% qualitative. In this table the qualitative part uses the six factors that can be read from the data; the analyst completes the rest on tab 9.</li>
+        <li>Each row is one borrower, scored on its latest reported financial year. The <b>BQR</b> (1 best to 10 worst) is the final rating: 60% quantitative and 40% qualitative. In this table the qualitative part uses the six factors that can be read from the data; the analyst completes the rest on tab 9. The system grade is a standalone view; government or parent support is added by the analyst as a notch.</li>
         <li>The <b>quantitative grade</b> (CW1 Strong to CW5 Critical) combines five pillars: liquidity, solvency and debt service, distress models, earnings quality, and red flags.</li>
         <li>Use the filters to narrow by industry, grade or Altman zone. Click a column header to sort. Click any row to open that borrower's credit summary.</li>
         <li>The charts below the table show where risk is concentrated by industry and how the distress models agree across the portfolio.</li>
@@ -261,7 +261,7 @@
         <span class="sig R">Red</span> a concern that affects the lending decision
         <span class="sig NA">n/a</span> data not reported
       </div>
-      <h4 style="margin:18px 0 8px">Ratings</h4><p class="small" style="margin:0 0 8px">The <b>Borrower Quality Rating</b> (BQR 1 best to 10 worst) is the final rating: 60% quantitative and 40% qualitative. The <b>quantitative grade</b> below summarises the numbers alone.</p>
+      <h4 style="margin:18px 0 8px">Ratings</h4><p class="small" style="margin:0 0 8px">The <b>Borrower Quality Rating</b> (BQR 1 best to 10 worst) is the final rating: 60% quantitative and 40% qualitative. Grades 1 to 6 are lent to on normal terms, 7 on tighter terms, 8 on a secured basis only, and 9 to 10 receive no fresh lending. The <b>quantitative grade</b> below summarises the numbers alone.</p>
       <div class="legend-row">
         <span><span class="grade CW1">CW1</span> Strong</span><span><span class="grade CW2">CW2</span> Adequate</span>
         <span><span class="grade CW3">CW3</span> Watch</span><span><span class="grade CW4">CW4</span> Weak</span><span><span class="grade CW5">CW5</span> Critical</span>
@@ -273,7 +273,7 @@
 </div>
 <div class="toast" id="toast"></div>
 
-<script src="assets/models.js?v=6"></script>
-<script src="assets/app.js?v=6"></script>
+<script src="assets/models.js?v=7"></script>
+<script src="assets/app.js?v=7"></script>
 </body>
 </html>

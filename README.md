@@ -1,6 +1,6 @@
 # Credit Risk Monitor
 
-A credit analyst's dashboard for the non-financial companies of the Nifty 500. For each borrower it assesses liquidity, solvency and debt capacity, runs five distress models, tests earnings quality and applies rule-based red flags drawn from Indian fraud and default cases. The results are combined into an internal credit watch grade (CW1 Strong to CW5 Critical).
+A credit analyst's dashboard for the non-financial companies of the Nifty 500. For each borrower it assesses liquidity, solvency and debt capacity, runs five distress models, tests earnings quality and applies rule-based red flags drawn from Indian fraud and default cases. The results are combined into an internal credit watch grade (CW1 Strong to CW5 Critical) and a Borrower Quality Rating (BQR 1 to 10) that blends the numbers (60%) with a qualitative scorecard (40%).
 
 ## Using the dashboard
 
@@ -33,6 +33,8 @@ The data refreshes every Sunday through the GitHub Actions workflow in `.github/
 | `assets/models.js` | All calculations. The same file runs in the browser and in the build step, so the portfolio table and borrower pages always agree |
 | `fetch_screener.py` | Downloads statements for every company into `data/companies/` |
 | `build_summary.js` | Scores every company and writes `data/universe.json` |
+| `tests/dashboard_checks.js` | 14 checks: source data, ratios and models recomputed independently, grade and BQR arithmetic, BQR balance and differentiation, loan sizing, covenants, text |
+| `tests/validate_course_examples.js`, `tests/crosscheck_python.py` | Worked examples reproduced, and an independent Python recomputation |
 
 ## Running locally
 
@@ -44,6 +46,8 @@ python3 -m http.server 8765        # then open http://localhost:8765
 ```
 
 `python3 fetch_screener.py TCS INFY` refreshes named companies only.
+
+`node tests/dashboard_checks.js` runs the validation suite after a rebuild.
 
 ## Limitations
 

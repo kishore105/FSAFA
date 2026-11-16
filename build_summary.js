@@ -17,7 +17,7 @@ for (const f of files) {
   if (!raw.pl || !raw.pl.rows || !raw.pl.rows.Sales) { console.error("skip (no Sales row)", f); skipped.push([raw.ticker || f, "statements not in the standard format"]); continue; }
   const m = M.fromScreener(raw);
   let t = m.n - 1;
-  while (t > 0 && !M.isNum(m.A.sales[t])) t--;
+  while (t > 0 && !(M.isNum(m.A.sales[t]) && M.isNum(m.A.ta[t]))) t--; // latest year with both P&L and balance sheet
   if (t < 2) { console.error("skip (short history)", f); skipped.push([raw.ticker, "fewer than three annual reports"]); continue; }
   const a = M.assess(m, t);
   keep[raw.ticker] = { m, t, a };

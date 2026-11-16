@@ -17,9 +17,15 @@
     "Oil Gas & Consumable Fuels"]);
 
   /* ======================= 1. Statement normalisation ======================= */
+  // Screener marks a transition period after a change of financial year as e.g. "Mar 202618m" (18 months)
+  // in the profit and loss table, while the balance sheet uses "Mar 2026". Both are matched on "Mar 2026".
+  // Years shown on a standalone basis carry an "(S)" tag and line breaks, e.g. "Sep 2024 (S)8m"; both are removed.
+  const fyClean = (c) => String(c).replace(/\(S\)/g, "").replace(/\s+/g, " ").trim();
+  const fyKey = (c) => fyClean(c).replace(/(\d{4}) ?\d+m$/, "$1");
+  const fyMonths = (c) => { const x = fyClean(c).match(/\d{4} ?(\d+)m$/); return x ? +x[1] : 12; };
   function aligned(block, label, years) {
     if (!block || !block.rows || !(label in block.rows)) return years.map(() => null);
-    const ix = {}; block.cols.forEach((c, i) => (ix[c] = i));
+    const ix = {}; block.cols.forEach((c, i) => (ix[fyKey(c)] = i));
     return years.map((y) => (y in ix ? (block.rows[label][ix[y]] ?? null) : null));
   }
   function sched(raw, section, label, years) {
@@ -36,7 +42,8 @@
   }
 
   function fromScreener(raw) {
-    const years = raw.pl.cols.filter((c) => c !== "TTM" && /\d{4}/.test(c));
+    const rawYears = raw.pl.cols.filter((c) => c !== "TTM" && /\d{4}/.test(c));
+    const years = rawYears.map(fyKey), months = rawYears.map(fyMonths);
     const P = (l) => aligned(raw.pl, l, years), B = (l) => aligned(raw.bs, l, years);
     const C = (l) => aligned(raw.cf, l, years), R = (l) => aligned(raw.ratios, l, years);
     const SP = (l) => sched(raw, "profit-loss", l, years), SB = (l) => sched(raw, "balance-sheet", l, years);
@@ -59,7 +66,14 @@
       fcf: C("Free Cash Flow"), capex: SC("Fixed assets purchased"),
       debtorDays: R("Debtor Days"), invDays: R("Inventory Days"), payDays: R("Days Payable"), cccRep: R("Cash Conversion Cycle"),
     };
-    return finish(raw, years, A);
+    // Flows of a period longer or shorter than 12 months are annualised so that they compare with year-end balances.
+    ["sales", "expenses", "ebitda", "otherIncome", "interest", "dep", "pbt", "np", "eps", "cogs", "selling", "sga", "exceptional",
+      "cfo", "cfi", "cff", "fcf", "capex"].forEach((k) => {
+      A[k] = A[k].map((v, i) => (isNum(v) && months[i] !== 12 ? (v * 12) / months[i] : v));
+    });
+    const m = finish(raw, years, A);
+    m.months = months;
+    return m;
   }
 
   /* Wide file from Prowess dx, Bloomberg or an annual report:
@@ -186,7 +200,11 @@
 
   /* ======================= 4. Solvency and debt service ======================= */
   const DEFAULT_DEBT = { dscr: 1.5, rate: 9, tenor: 7, growth: 0, maintPct: 100 };
-  function solvency(m, t, o = DEFAULT_DEBT) {
+  // Repayment tenor follows the life of the assets financed: power projects are financed over 15 years or more.
+  const LONG_TENOR = { Power: 15 };
+  function debtFor(industry) { return { ...DEFAULT_DEBT, tenor: LONG_TENOR[industry] || DEFAULT_DEBT.tenor }; }
+  function solvency(m, t, o) {
+    o = o || debtFor(m.industry);
     const A = m.A;
     const cfads = isNum(A.cfo[t]) ? A.cfo[t] - z0(A.dep[t]) * (o.maintPct / 100) : null;
     const principal = isNum(A.ltb[t]) ? A.ltb[t] / o.tenor : isNum(A.borrow[t]) ? A.borrow[t] / o.tenor : null;
@@ -227,7 +245,8 @@
     return v;
   }
 
-  function debtCapacity(m, t, o = DEFAULT_DEBT) {
+  function debtCapacity(m, t, o) {
+    o = o || debtFor(m.industry);
     const A = m.A;
     const base = isNum(A.cfo[t]) ? A.cfo[t] - z0(A.dep[t]) * (o.maintPct / 100) : 0;
     const rows = []; let pv = 0, pvCfads = 0;
@@ -678,9 +697,10 @@
       out.related = adv > 0.25 ? "Weak" : adv > 0.15 ? "Acceptable" : adv > 0.05 ? "Satisfactory" : "Strong";
       why.related = `Loans and advances = ${(100 * adv).toFixed(1)}% of revenue (proxy; verify related-party note)`;
     }
-    const redD = Object.values(a.sig.distress).filter((x) => x === "R").length, redF = a.fl.filter((x) => x.status === "R").length;
-    out.fraud = redD >= 3 || redF >= 5 ? "Poor" : redD >= 2 || redF >= 3 ? "Weak" : redD === 1 || redF === 2 ? "Acceptable" : redF === 1 ? "Satisfactory" : "Strong";
-    why.fraud = `Pressure indicators: ${redD} distress model(s) red, ${redF} red flag(s)`;
+    // Red flags only: the distress models already carry 25% of the quantitative score, so they are not counted twice.
+    const redF = a.fl.filter((x) => x.status === "R").length;
+    out.fraud = redF >= 5 ? "Poor" : redF >= 4 ? "Weak" : redF >= 3 ? "Acceptable" : redF >= 1 ? "Satisfactory" : "Strong";
+    why.fraud = `${redF} red flag(s) on the forensic checklist (tab 8)`;
     if (isNum(ctx.indMedianRisk)) {
       const r = ctx.indMedianRisk;
       out.industry = r < 20 ? "Strong" : r < 28 ? "Satisfactory" : r < 36 ? "Acceptable" : r < 45 ? "Weak" : "Poor";
@@ -702,8 +722,8 @@
   const DEFAULT_POLICY = {
     limits: [ // by BQR grade band: maximum debt/EBITDA and debt/equity after the new loan
       { band: "1-2", from: 1, to: 2, maxLev: 4.0, maxDE: 2.0 }, { band: "3-4", from: 3, to: 4, maxLev: 3.5, maxDE: 1.75 },
-      { band: "5-6", from: 5, to: 6, maxLev: 3.0, maxDE: 1.5 }, { band: "7", from: 7, to: 7, maxLev: 2.0, maxDE: 1.0 },
-      { band: "8-10", from: 8, to: 10, maxLev: 0, maxDE: 0 },
+      { band: "5-6", from: 5, to: 6, maxLev: 3.0, maxDE: 1.5 }, { band: "7", from: 7, to: 7, maxLev: 2.5, maxDE: 1.25 },
+      { band: "8", from: 8, to: 8, maxLev: 1.75, maxDE: 1.0, securedOnly: true }, { band: "9-10", from: 9, to: 10, maxLev: 0, maxDE: 0 },
     ],
     loanTypes: {
       senior: { label: "Senior secured", levAdd: 0.5, cover: 1.5, lgd: 25, note: "First charge on fixed assets; ranks ahead of all other lenders." },
@@ -712,6 +732,7 @@
     },
   };
   function structure(m, t, o) {
+    o = { ...o, debt: o.debt || debtFor(m.industry) };
     const A = m.A, p = o.policy || DEFAULT_POLICY, lt = p.loanTypes[o.loanType];
     const band = p.limits.find((l) => o.grade >= l.from && o.grade <= l.to) || p.limits[p.limits.length - 1];
     const maxLev = band.maxLev > 0 ? band.maxLev + lt.levAdd : 0, maxDE = band.maxDE;
@@ -726,6 +747,8 @@
       dscr: isNum(cfads0) && cfads0 > 0 ? (cfads0 / o.debt.dscr - intr - princ0) / (o.debt.rate / 100 + 1 / o.debt.tenor) : 0,
       security: lt.cover > 0 ? (isNum(collateral) ? collateral / lt.cover - debt : 0) : null,
     };
+    // Bands marked securedOnly do not allow unsecured lending at all.
+    if (band.securedOnly && !(lt.cover > 0)) caps.policy = 0;
     const binding = Object.entries(caps).filter(([, v]) => v !== null).sort((a, b) => a[1] - b[1])[0];
     const maxLoan = Math.max(0, binding[1]);
     const L = o.amount;
@@ -770,5 +793,5 @@
   root.Models = { fromScreener, fromWide, liquidity, cceLabel, solvency, debtCapacity, altman, ohlson, zmijewski, springate,
     fulmer, kzIndex, accruals, beneish, cScore, piotroski, aem, rem, benford, profitability, market, lifeCycle, durbinWatson,
     redFlags, quarterShare, promoter, assess, PILLARS, GRADES, IMPORT_FIELDS, DEFAULT_TACR, DEFAULT_DEBT, AEM_COEF, REM_COEF,
-    isNum, div, growth, band, MANUFACTURING, QUAL_LEVELS, QUAL_FACTORS, BQR_SCALE, bqr, bqrFromScore, qualSuggest, DEFAULT_POLICY, structure, covenants };
+    isNum, div, growth, band, MANUFACTURING, LONG_TENOR, debtFor, QUAL_LEVELS, QUAL_FACTORS, BQR_SCALE, bqr, bqrFromScore, qualSuggest, DEFAULT_POLICY, structure, covenants };
 })(typeof window !== "undefined" ? window : globalThis);

@@ -99,7 +99,7 @@ def parse_table(section):
     t = section.find("table") if section else None
     if t is None:
         return [], {}
-    head = [th.get_text(strip=True) for th in t.find("thead").find_all("th")][1:]
+    head = [" ".join(th.get_text(" ", strip=True).split()) for th in t.find("thead").find_all("th")][1:]
     rows = {}
     for tr in t.find("tbody").find_all("tr"):
         tds = tr.find_all("td")
