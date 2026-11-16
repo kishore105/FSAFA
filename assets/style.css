@@ -198,7 +198,7 @@ input[type=range] { width: 100%; accent-color: var(--teal); }
 @media (max-width: 900px) {
   .layout { grid-template-columns: 1fr; } .sidenav { position: static; height: auto; display: flex; flex-wrap: wrap; gap: 4px; }
   .nav-group, .side-foot, .side-borrower { display: none; } .nav-item { width: auto; }
-  .g2, .g3, .g4, .g5 { grid-template-columns: 1fr; } .span2 { grid-column: auto; }
+  .g2, .g3, .g4, .g5, .g32 { grid-template-columns: 1fr; } .span2 { grid-column: auto; }
   .topbar { height: auto; flex-wrap: wrap; padding: 10px 16px; position: static; } .brand { min-width: 0; } main { padding: 16px; }
   .top-controls { flex-wrap: wrap; width: 100%; order: 3; } .ctl { flex: 1 1 150px; min-width: 0; } .ctl input, .ctl select { width: 100%; }
   .top-right { margin-left: auto; } .sidenav { top: 0; }
