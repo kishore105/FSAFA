@@ -7,6 +7,15 @@ on:
   schedule:
     - cron: "30 20 * * 6"   # Saturday 20:30 UTC = Sunday 02:00 IST
   workflow_dispatch:         # manual "Run workflow" button
+    inputs:
+      tickers:
+        description: "Optional: only these NSE symbols, space separated (for a quick test)"
+        required: false
+        default: ""
+      commit:
+        description: "Commit the refreshed data"
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -26,16 +35,34 @@ jobs:
       - name: Install dependencies
         run: pip install beautifulsoup4
       - name: Update Nifty 500 constituent list (kept as is if NSE refuses the request)
+        if: inputs.tickers == ''
         run: |
           curl -sf -A "Mozilla/5.0" -o /tmp/n500.csv https://nsearchives.nseindia.com/content/indices/ind_nifty500list.csv \
             && head -1 /tmp/n500.csv | grep -q Symbol && mv /tmp/n500.csv data/nifty500.csv || echo "NSE list not refreshed"
       - name: Fetch statements
         env:
           REFRESH_ALL: "1"   # checkout resets file dates, so ignore the resume check
-        run: python fetch_screener.py | tee data/fetch_log.txt
+        run: python fetch_screener.py ${{ inputs.tickers }} | tee data/fetch_log.txt
+      - name: Stop if Screener refused most requests
+        run: |
+          ok=$(grep -c "\] ok " data/fetch_log.txt || true)
+          failed=$(grep -c "\] FAIL " data/fetch_log.txt || true)
+          echo "Fetched: $ok  Failed: $failed"
+          if [ -z "${{ inputs.tickers }}" ] && [ "$ok" -lt 350 ]; then
+            echo "::error::Only $ok companies fetched. Nothing is committed, so the site keeps last week's data and its date."
+            exit 1
+          fi
+          if [ -n "${{ inputs.tickers }}" ] && [ "$ok" -lt 1 ]; then
+            echo "::error::Test fetch failed: Screener did not return any of the requested companies."
+            exit 1
+          fi
       - name: Score portfolio
         run: node build_summary.js
+      - name: Run the validation checks (reported, does not block the refresh)
+        continue-on-error: true
+        run: node tests/dashboard_checks.js
       - name: Commit refreshed data
+        if: github.event_name == 'schedule' || inputs.commit
         run: |
           git config user.name "data-refresh-bot"
           git config user.email "actions@users.noreply.github.com"

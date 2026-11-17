@@ -169,7 +169,7 @@
     const L = S.list;
     const cnt = (fn) => L.filter(fn).length;
     const weak = cnt((c) => c.g === "CW4" || c.g === "CW5"), dist = cnt((c) => c.zz === "Distress"), ohl = cnt((c) => c.op > 0.5);
-    const m5 = cnt((c) => c.ms > -2.22), negCfo = cnt((c) => c.cce != null && c.cce < 0);
+    const m5 = cnt((c) => c.ms > -2.22), negCfo = cnt((c) => c.ocf != null && c.ocf < 0); // CFO / current liabilities carries the sign of CFO, including firms with negative EBITDA
     $("#pfKpis").innerHTML = [
       ["Borrowers covered", L.length, "Nifty 500 excluding financial services", "accent"],
       ["BQR 9-10 (no fresh lending)", cnt((c) => c.bqr >= 9), `${fp(cnt((c) => c.bqr >= 9) / L.length, 1)} of the portfolio; ${cnt((c) => c.bqr === 8)} more at BQR 8 (secured lending only)`],
