@@ -336,6 +336,21 @@ check(15, "Classification shifting: OLS recovers known coefficients; UE_OR and p
   return n;
 });
 
+// 16. Early-warning alerts: recomputed from the statements, and none raised by a single condition
+check(16, "Early-warning alerts: recomputed for every borrower; each alert needs at least two conditions", (fail) => {
+  let n = 0;
+  for (const r of rows) {
+    const m = M.fromScreener({ ...raws[r.t], industry: r.ind }), t = m.years.indexOf(r.fy), a = M.assess(m, t);
+    const al = M.alerts(m, t, a);
+    n++;
+    const got = JSON.stringify((r.al || []).map((x) => x.join(":")).sort()), exp = JSON.stringify(al.map((x) => x.code + ":" + x.level).sort());
+    if (got !== exp) fail(`${r.t}: file ${got} vs recomputed ${exp}`);
+    al.forEach((x) => { if (x.met < 2) fail(`${r.t} ${x.code}: raised on ${x.met} condition`); if (x.evidence.length !== x.met) fail(`${r.t} ${x.code}: evidence count`); });
+  }
+  if (!rows.some((r) => (r.al || []).length === 0)) fail("every borrower has an alert: thresholds too loose");
+  return n;
+});
+
 let failed = 0;
 for (const r of results) {
   const ok = r.fails.length === 0;

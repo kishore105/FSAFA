@@ -9,14 +9,15 @@
     tacr: { ...M.DEFAULT_TACR }, debt: { ...M.DEFAULT_DEBT }, sort: { key: "bqr", asc: false }, page: 0, charts: {},
     loan: { type: "senior", amount: null }, policy: JSON.parse(JSON.stringify(M.DEFAULT_POLICY)), cov: null };
   const PAGE = 25;
-  const COLORS = { navy: "#12355b", teal: "#0e7c86", gold: "#b7862b", g: "#1f8a4c", a: "#c27c0e", r: "#c0392b", grey: "#a3acbd", light: "#dfe6ee",
+  // chart series use charcoal, steel and sand so that green, amber and red keep their signal meaning
+  const COLORS = { navy: "#2e3238", teal: "#6a7a90", gold: "#b8afa3", brand: "#6e1e3a", g: "#1a7f45", a: "#d69a12", r: "#d9452f", grey: "#a19c95", light: "#e3ded7",
     CW1: "#1f7a46", CW2: "#5c9a3c", CW3: "#c9971c", CW4: "#d0632a", CW5: "#b3261e" };
 
   /* ---------------- formatting ---------------- */
   const z0 = (v) => (isNum(v) ? v : 0);
   const val = (v) => (v === "inf" ? Infinity : v === "neg" ? -Infinity : v);
   const f = (v, d = 2) => { v = val(v); return v === Infinity ? "No debt" : v === -Infinity ? "n/a" : isNum(v) ? v.toLocaleString("en-IN", { minimumFractionDigits: d, maximumFractionDigits: d }) : "n/a"; };
-  const fx = (v, d = 2) => { const neg = v === "neg"; v = val(v); return neg ? '<span style="color:#c0392b">Negative</span>' : v === Infinity ? "No debt" : isNum(v) ? f(v, d) + "x" : "n/a"; };
+  const fx = (v, d = 2) => { const neg = v === "neg"; v = val(v); return neg ? '<span style="color:#b8321d">Negative</span>' : v === Infinity ? "No debt" : isNum(v) ? f(v, d) + "x" : "n/a"; };
   const fp = (v, d = 1) => (isNum(val(v)) ? (100 * v).toFixed(d) + "%" : "n/a");
   const fc = (v) => (isNum(v) ? Math.round(v).toLocaleString("en-IN") : "n/a");
   const fd = (v) => (isNum(v) ? Math.round(v) + " days" : "n/a");
@@ -32,7 +33,7 @@
   /* ---------------- charts ---------------- */
   if (window.Chart) {
     Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
-    Chart.defaults.font.size = 11.5; Chart.defaults.color = "#5d6880";
+    Chart.defaults.font.size = 11.5; Chart.defaults.color = "#5f636b";
     Chart.defaults.plugins.legend.labels.boxWidth = 10; Chart.defaults.plugins.legend.labels.boxHeight = 10;
     Chart.defaults.maintainAspectRatio = false; Chart.defaults.animation.duration = 250;
   }
@@ -42,8 +43,8 @@
     const c = document.getElementById(id);
     if (c) S.charts[id] = new Chart(c, cfg);
   }
-  const gridY = { grid: { color: "#eef1f6" }, border: { display: false } };
-  const gridX = { grid: { display: false }, border: { color: "#dfe6ee" } };
+  const gridY = { grid: { color: "#efece8" }, border: { display: false } };
+  const gridX = { grid: { display: false }, border: { color: "#e3ded7" } };
   function lineCfg(labels, sets, yfmt, extra = {}) {
     return { type: "line", data: { labels, datasets: sets.map((s, i) => ({ borderWidth: 2, pointRadius: 2.5, tension: 0.25, spanGaps: true,
       borderColor: s.color || [COLORS.navy, COLORS.teal, COLORS.gold, COLORS.r][i], backgroundColor: s.color || [COLORS.navy, COLORS.teal, COLORS.gold, COLORS.r][i], ...s })) },
@@ -66,12 +67,16 @@
       if (!r.ok) throw new Error(r.status);
       S.U = await r.json();
     } catch (e) {
-      $("#dataStatus").innerHTML = "<i style='background:#e5534b'></i>Data not loaded";
+      $("#dataStatus").innerHTML = "<i style='background:#d9452f'></i>Data not loaded";
       $("#pfKpis").innerHTML = `<div class="card span2" style="grid-column:1/-1"><h3>Data could not be loaded</h3><p class="muted">Open the dashboard through its website address, or locally with <span class="mono">python3 -m http.server</span> in the dashboard folder. Browsers block data files when a page is opened directly from disk.</p></div>`;
       return;
     }
     S.list = S.U.companies;
-    S.list.forEach((c) => (S.byT[c.t] = c));
+    S.list.forEach((c) => {
+      S.byT[c.t] = c;
+      const al = c.al || [];
+      c.alR = al.filter((x) => x[1] === "R").length * 10 + al.filter((x) => x[1] === "A").length; // sort key: red alerts first
+    });
     const d = new Date(S.U.built);
     $("#dataStatus").innerHTML = `<i></i>${S.list.length} borrowers · data as of ${d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`;
     refreshDatalist();
@@ -147,7 +152,9 @@
     ["ic", "Int. cover", (c) => fx(c.ic, 1), "n"],
     ["dscr", "DSCR", (c) => fx(c.dscr, 2), "n"],
     ["cce", "CFO/EBITDA", (c) => fp(c.cce, 0), "n"],
-    ["ms", "M-score", (c) => (c.ms == null ? "n/a" : `<span style="color:${c.ms > -2.22 ? COLORS.r : "inherit"}">${f(c.ms)}</span>`), "n"],
+    ["ms", "M-score", (c) => (c.ms == null ? "n/a" : `<span style="color:${c.ms > -2.22 ? "#b8321d" : "inherit"}">${f(c.ms)}</span>`), "n"],
+    ["alR", "Alerts", (c) => { const al = c.al || []; const r = al.filter((x) => x[1] === "R").length, a = al.length - r;
+      return al.length ? `<span title="${esc(al.map((x) => (x[1] === "R" ? "Red: " : "Amber: ") + M.ALERT_DEFS[x[0]][0]).join("\n"))}">${r ? `<span class="sig R">${r}</span> ` : ""}${a ? `<span class="sig A">${a}</span>` : ""}</span>` : '<span class="muted small">none</span>'; }, "n"],
     ["fR", "Red flags", (c) => `<span class="sig R" title="Red">${c.fR}</span> <span class="sig A" title="Amber">${c.fA}</span>`, "n"],
   ];
   function filtered() {
@@ -166,10 +173,18 @@
     $("#pfKpis").innerHTML = [
       ["Borrowers covered", L.length, "Nifty 500 excluding financial services", "accent"],
       ["BQR 9-10 (no fresh lending)", cnt((c) => c.bqr >= 9), `${fp(cnt((c) => c.bqr >= 9) / L.length, 1)} of the portfolio; ${cnt((c) => c.bqr === 8)} more at BQR 8 (secured lending only)`],
-      ["Altman distress zone", dist, "Z' or Z'' below the distress cut-off"],
+      ["Red early-warning alerts", cnt((c) => (c.al || []).some((x) => x[1] === "R")), `${cnt((c) => (c.al || []).filter((x) => x[1] === "R").length >= 2)} borrowers with two or more; ${dist} in the Altman distress zone`],
       ["Ohlson probability above 50%", ohl, "Model reads default within two years"],
       ["Beneish M-score above -2.22", m5, `${negCfo} borrowers with negative operating cash flow`],
     ].map(([l, v, n, cls]) => `<div class="card kpi ${cls || ""}"><div class="lbl">${l}</div><div class="val">${v}</div><div class="note">${n}</div></div>`).join("");
+    // early-warning feed: each alert type with its borrowers, largest first
+    const byMcap = (a, b) => (b.mcap || 0) - (a.mcap || 0);
+    $("#pfAlerts").innerHTML = `<div class="card-head"><div><h3>Early-warning alerts</h3><div class="sub">Each alert connects signals from at least two pillars, so one noisy measure cannot raise it. Red: most conditions met, investigate now. Amber: partly met. Alerts do not change the rating. Click a name to open the borrower.</div></div></div>
+      <div class="tbl-wrap"><table><thead><tr><th>Alert</th><th class="n">Red</th><th class="n">Amber</th><th>Largest borrowers on red</th></tr></thead><tbody>
+      ${Object.entries(M.ALERT_DEFS).map(([k, [name]]) => {
+        const red = L.filter((c) => (c.al || []).some((x) => x[0] === k && x[1] === "R")).sort(byMcap), amb = cnt((c) => (c.al || []).some((x) => x[0] === k && x[1] === "A"));
+        return `<tr><td><b>${name}</b></td><td class="n">${red.length ? `<span class="sig R">${red.length}</span>` : "0"}</td><td class="n">${amb}</td><td class="small">${red.slice(0, 5).map((c) => `<a href="#summary/${encodeURIComponent(c.t)}">${esc(c.n.replace(/ Ltd\.?$| Limited$/i, ""))}</a>`).join(", ") || '<span class="muted">none</span>'}${red.length > 5 ? ` and ${red.length - 5} more` : ""}</td></tr>`;
+      }).join("")}</tbody></table></div>`;
     drawTable();
     // grade distribution
     const grades = M.GRADES.map((g) => g[1]);
@@ -258,7 +273,7 @@
     add(a.p && a.p.F >= 7, strengths, `a Piotroski score of ${a.p && a.p.F}/9`);
     add(s.solvency.dscr === "G", strengths, `DSCR of ${fx(a.sol.dscr)}`);
     const all = { ...s.liquidity, ...s.solvency, ...s.distress, ...s.quality };
-    const names = { currentRatio: "current ratio", ocfRatio: "operating cash flow ratio", cce: "cash conversion efficiency", tacr: "time-adjusted current ratio", dir: "defensive interval", wcDays: "working capital days",
+    const names = { currentRatio: "current ratio", quickRatio: "quick ratio",ocfRatio: "operating cash flow ratio", cce: "cash conversion efficiency", tacr: "time-adjusted current ratio", dir: "defensive interval", wcDays: "working capital days",
       de: "debt to equity", debtEbitda: "debt to EBITDA", intCover: "interest cover", dscr: "DSCR", ffoTl: "FFO to total liabilities", altman: "Altman Z", ohlson: "Ohlson probability", zmijewski: "Zmijewski score",
       springate: "Springate score", fulmer: "Fulmer H", sloan: "Sloan ratio", beneish: "Beneish M-score", cscore: "Montier C-score", piotroski: "Piotroski F-score", aem: "discretionary accruals", benford: "Benford test" };
     Object.entries(all).forEach(([k, v]) => { if (v === "R") { concerns.push(names[k] || k); if (QUESTIONS[k]) asks.push(QUESTIONS[k]); } });
@@ -279,6 +294,23 @@
       : ["Avoid fresh exposure", BQR_COL[g - 1], "Review existing exposure for restructuring or exit. Escalate to the credit committee."];
     return { strengths, concerns: [...new Set(concerns)], asks: [...new Set(asks)].slice(0, 6), action: bAct || actions[a.grade] || ["Insufficient data", COLORS.grey, "Not enough reported data to grade this borrower."] };
   }
+  // Five questions a credit analyst should be able to answer within a few seconds of opening a borrower.
+  function glance(note) {
+    const m = S.m, A = m.A, t = S.t, a = S.a, pr = M.profitability(m, t);
+    const g = (k) => M.growth(A[k], t), pctS = (v) => (isNum(v) ? `${v >= 0 ? "+" : ""}${(100 * v).toFixed(0)}%` : "n/a");
+    const al = M.alerts(m, t, a, { tacr: S.tacr, debt: S.debt });
+    const st = S.b ? M.structure(m, t, { grade: S.b.grade, loanType: "senior", amount: 0, debt: S.debt, policy: S.policy, pd: a.o && a.o.p }) : null;
+    const bind = { leverage: "leverage limit", gearing: "gearing limit", dscr: "DSCR limit", security: "security cover", policy: "lending policy" };
+    const rows = [
+      ["What am I looking at?", `${esc(m.raw.nse_name || m.raw.name)}, ${esc(m.industry)}, ${yLabel()}. ${S.b ? `BQR ${S.b.grade} (${S.b.label}), standalone view.` : ""}`],
+      ["How is it performing?", `Revenue ${pctS(g("sales"))}, EBITDA ${pctS(g("ebitda"))} and operating cash flow ${pctS(g("cfo"))} on last year. EBITDA margin ${fp(pr.ebitdaMargin, 1)}, ROCE ${fp(pr.roce, 1)}, ${fp(a.liq.cce, 0)} of EBITDA converted to cash.`],
+      ["Where are the risks and strengths?", `${note.concerns.length ? `<b>Risks:</b> ${esc(note.concerns.slice(0, 3).join(", "))}. ` : "<b>Risks:</b> no red signal. "}${note.strengths.length ? `<b>Strengths:</b> ${note.strengths.slice(0, 2).join("; ")}.` : ""}`],
+      ["What deserves investigation?", al.length ? al.slice(0, 3).map((x) => `${sig(x.level, x.name)} <span class="small">${esc(x.evidence.join("; "))}</span>`).join("<br>") : sig("G", "No early-warning alert") + ' <span class="small muted">Review the amber items in the analyst note.</span>'],
+      ["What decision should I consider?", `<b>${note.action[0]}.</b> ${note.action[2]}${!st ? "" : st.maxLoan > 0 ? ` Senior secured capacity under the default policy: Rs ${fc(st.maxLoan)} cr (set by the ${bind[st.binding] || st.binding}).` : ` <b>No new money fits the default policy</b>: the ${bind[st.binding] || st.binding} is already used up, so consider refinancing or restructuring existing debt rather than a fresh loan.`}`],
+    ];
+    return `<div class="card mb glance"><h3>At a glance</h3><div class="sub">The five questions to answer before reading further. Details on the tabs below.</div>
+      <table><tbody>${rows.map(([q, aText]) => `<tr><th style="width:24%;text-align:left;vertical-align:top">${q}</th><td>${aText}</td></tr>`).join("")}</tbody></table></div>`;
+  }
   function renderSummary() {
     const m = S.m, A = m.A, t = S.t, a = S.a, raw = m.raw;
     const note = analystNote(a), lc = M.lifeCycle(m, t), mk = M.market(m);
@@ -296,6 +328,7 @@
           <div style="border-left:1px solid var(--line);padding-left:16px"><div class="lbl">Quantitative grade (60%)</div><div style="font-weight:700;font-size:16px">${gradeChip(a.grade)} ${a.gradeLabel}</div><div class="small muted">Qualitative score ${f(S.b.qualScore, 0)} / 100 (40%)</div>
           <div class="small"><a href="#" data-goto="bqr">Review the rating</a></div></div>` : `<div><div class="lbl">Credit watch grade</div><div class="big">${a.grade}</div></div>`}</div>
       </div></div>
+      ${glance(note)}
       <div class="grid g3 mb">
         <div class="card"><h3>Where the risk comes from</h3><div class="sub">Pillar risk scores, 0 = no concern, 100 = all signals red</div><div class="pillars">${pil}</div>
           <div class="chart-box short" style="margin-top:12px"><canvas id="chHist"></canvas></div></div>
@@ -322,7 +355,7 @@
     chart("chHist", lineCfg(hist.map((h) => h[0].replace("Mar ", "FY")), [{ label: "Risk score", data: hist.map((h) => h[1]), color: COLORS.navy, fill: false }], (v) => f(v, 0), { y: { min: 0, max: 100 } }));
     const ix = yrsUpTo();
     chart("chProfitCash", { type: "bar", data: { labels: labels(ix), datasets: [
-      { type: "line", label: "Profit after tax", data: series(ix, (i) => A.np[i]), borderColor: COLORS.gold, backgroundColor: COLORS.gold, tension: 0.25, borderWidth: 2.5, pointRadius: 2.5 },
+      { type: "line", label: "Profit after tax", data: series(ix, (i) => A.np[i]), borderColor: COLORS.navy, backgroundColor: COLORS.navy, tension: 0.25, borderWidth: 2.5, pointRadius: 2.5 },
       { label: "Cash from operations", data: series(ix, (i) => A.cfo[i]), backgroundColor: COLORS.teal + "cc", borderRadius: 3 },
       { label: "EBITDA", data: series(ix, (i) => A.ebitda[i]), backgroundColor: COLORS.light, borderRadius: 3 }] },
       options: { interaction: { mode: "index", intersect: false }, scales: { x: gridX, y: { ...gridY, ticks: { callback: (v) => fc(v) } } } } });
@@ -450,7 +483,7 @@
     const m = S.m, t = S.t, a = S.a, z = a.z, o = a.o, zm = a.zm, sp = a.sp, fu = a.fu, kz = M.kzIndex(m, m.n - 1);
     const zSig = a.sig.distress.altman;
     const agree = Object.values(a.sig.distress).filter((x) => x === "R").length, nAv = Object.values(a.sig.distress).filter((x) => x !== "NA").length;
-    const zrow = (name, v, zone, cut, on) => `<tr ${on ? 'style="background:#f2f9f9"' : ""}><td><b>${name}</b>${on ? ' <span class="tag">Primary</span>' : ""}</td><td class="n num">${f(v)}</td><td><span class="zone ${zone || ""}">${zone || "n/a"}</span></td><td class="small muted">${cut}</td></tr>`;
+    const zrow = (name, v, zone, cut, on) => `<tr ${on ? 'style="background:#f6ecef"' : ""}><td><b>${name}</b>${on ? ' <span class="tag">Primary</span>' : ""}</td><td class="n num">${f(v)}</td><td><span class="zone ${zone || ""}">${zone || "n/a"}</span></td><td class="small muted">${cut}</td></tr>`;
     $("#disBody").innerHTML = `
       <div class="card mb"><div class="card-head"><div><h3>Model agreement</h3><div class="sub">${yLabel()}. ${agree} of ${nAv} models signal distress.</div></div>
         <div style="font-size:26px;font-weight:800;color:${agree >= 3 ? COLORS.r : agree >= 1 ? COLORS.a : COLORS.g}">${agree} / ${nAv}</div></div>
@@ -861,6 +894,7 @@
         fm(`TA/A(t-1) = ${M.AEM_COEF.a0} + ${M.AEM_COEF.a1} (1/A(t-1)) + ${M.AEM_COEF.b1} [(dREV - dREC)/A(t-1)] ${M.AEM_COEF.b2} (PPE/A(t-1))      R-squared ${M.AEM_COEF.r2}\nDiscretionary accruals = actual TA/A(t-1) - fitted value. Green up to 5%, red above 10%.`) +
         `<p><b>Real earnings management.</b> The three Roychowdhury models (abnormal CFO, abnormal production cost, abnormal discretionary expense) use coefficients estimated by OLS on 2,150 Indian listed firms for FY2024. Aggregate REM = -Ab_CFO + Ab_PROD - Ab_DISX. Discretionary expense needs selling cost, which many companies do not report separately; the aggregate then uses the two available components. Borrower figures are converted from Rs crore to Rs million before the models are applied. Coefficients estimated on one year are applied to every year, which is an approximation.</p>` +
         `<p><b>Classification shifting.</b> Operating revenue is modelled as OR = a0 + b1 lagged OR + b2 MTB + b3 AR, all scaled by lagged total assets, on the latest-year cross-section of the coverage universe (observations outside the 1st and 99th percentiles trimmed). The residual is unexpected operating revenue (UE_OR). Across the universe, UE_OR is regressed on non-operating revenue; a significant negative coefficient would mean non-operating income is being reported as revenue. A borrower is marked amber when its UE_OR is in the top decile and its non-operating income fell in the same year. The measure is shown for information and is not scored. Expense and cash flow shifting are not tested.</p>` +
+        `<p><b>Early-warning alerts.</b> Seven alerts connect signals from different pillars. Profits not turning into cash: profit up with cash flow down, CFO below 40% of EBITDA, debtors or inventory growing much faster than sales (red at 3 of 4). Debt-funded stress: borrowings growing much faster than sales, interest cover below 3x, DSCR below 1.2x (red at 3 of 3). Earnings manipulation alert: Beneish, Sloan, discretionary accruals, Benford and a C-score of 4 or more (red at 3 of 5). Distress consensus: three or more of the five distress models red. Liquidity squeeze: current ratio below 1, weak cash conversion, defensive interval below 90 days, negative CFO (red at 3 of 4). Governance and related-party pressure: falling promoter stake, high advances, loan-to-equity conversion, eroded net worth (red at 2). Deteriorating trend: risk score up 10 points or more with at least two pillars worse (red when it rises 20 points). Amber means two conditions are met. Computed as of FY2024 and compared with FY2026, new stress (interest cover below 1.5x or negative net worth) appeared in 0.7% of borrowers with no alert, 3.4% with amber alerts only, 5.0% with one red alert and 7.4% with two or more; the counts are small, so the alerts rank borrowers for review and are not default predictions.</p>` +
         `<p><b>Purchase-to-inventory ratio.</b> Purchases (material cost + increase in inventory) divided by the increase in inventory, compared with the borrower's own history and the industry median. Shown for information; it has no fixed threshold.</p>` +
         `<p><b>Benford's law.</b> First digits of every reported amount (annual and quarterly statements and their breakdowns) are compared with log10(1 + 1/d). The Kolmogorov-Smirnov statistic is the largest gap between the cumulative observed and expected distributions; a value above 1.36 / &radic;N indicates departure from Benford's law. Subtotals repeat some digits, so the test indicates where to look and is not evidence of manipulation.</p>` +
         `<p><b>Other measures.</b> DuPont (three and five step), ROCE, ROIC, ROIIC, P/E, PEG, PEGY and P/OCF. The cash flow life cycle stage follows the signs of CFO, CFI and CFF. The Durbin-Watson statistic is computed on the residuals of a linear trend fitted to operating cash flow.</p>`) +

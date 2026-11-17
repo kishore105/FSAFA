@@ -845,8 +845,74 @@
     return { purchases, dInv, ratio: dInv > 0 ? purchases / dInv : null };
   }
 
+  /* ======================= 14. Credit early-warning alerts ======================= */
+  // Each alert connects signals from at least two pillars, so that a single noisy measure does not raise it.
+  // Level R = all or most conditions met; A = partly met. The alerts do not change the risk score or the BQR.
+  const ALERT_DEFS = {
+    paper: ["Profits not turning into cash", "Ask for receivables ageing and inventory composition; tie revenue to cash before any increase in limits."],
+    debt: ["Debt-funded stress", "Ask what the new debt financed and when it will earn; test DSCR on a downside case before lending more."],
+    manip: ["Earnings manipulation alert", "Read the accounting policy notes and auditor remarks; ask about revenue recognition, capitalisation and provisions."],
+    distress: ["Distress consensus", "Several independent models agree: review existing exposure and security cover with the credit committee."],
+    liquidity: ["Liquidity squeeze", "Check committed bank lines and the next twelve months of maturities; consider a working capital covenant."],
+    governance: ["Governance and related-party pressure", "Read the related-party note and promoter pledge disclosures; consider a minimum promoter holding covenant."],
+    trend: ["Deteriorating trend", "Find out what changed this year: compare the pillar scores with last year and ask management about the drivers."],
+  };
+  function alerts(m, t, a, opts = {}) {
+    const out = [], fl = (n) => { const x = a.fl.find((y) => y.name === n); return x ? x.status : "NA"; };
+    const push = (code, conds, rAt, aAt) => {
+      const hit = conds.filter((c) => c[0]);
+      const level = hit.length >= rAt ? "R" : hit.length >= aAt ? "A" : null;
+      if (level) out.push({ code, name: ALERT_DEFS[code][0], level, action: ALERT_DEFS[code][1], evidence: hit.map((c) => c[1]), met: hit.length, of: conds.length });
+    };
+    const L = a.liq, S = a.sol;
+    push("paper", [
+      [fl("Profit up but cash flow down") === "R", "profit rose while operating cash flow fell"],
+      [L.signals.cce === "R", `only ${isNum(L.cce) ? Math.round(100 * L.cce) + "%" : "a small share"} of EBITDA converted to cash`],
+      [fl("Revenue up but debtors up faster") === "R", "debtors grew much faster than sales"],
+      [fl("Inventory build-up") === "R", "inventory grew much faster than sales"],
+    ], 3, 2);
+    push("debt", [
+      [fl("Excess debt growth") === "R", "borrowings grew much faster than sales"],
+      [isNum(S.intCover) && S.intCover < 3, `interest cover ${isNum(S.intCover) ? S.intCover.toFixed(1) + "x" : ""} is below 3x`],
+      [isNum(S.dscr) && S.dscr < 1.2, `DSCR ${isNum(S.dscr) ? S.dscr.toFixed(2) + "x" : ""} is below 1.2x`],
+    ], 3, 2);
+    push("manip", [
+      [a.b && a.b.signal === "R", `Beneish M-score ${a.b ? a.b.M.toFixed(2) : ""} is above -2.22`],
+      [a.acc.signal === "R", "accruals (Sloan ratio) are high"],
+      [a.ae && a.ae.signal === "R", "discretionary accruals are above 10% of assets"],
+      [a.bf && a.bf.signal === "R", "reported figures depart from Benford's law"],
+      [a.c && a.c.C >= 4, `Montier C-score ${a.c ? a.c.C : ""} of 6`],
+    ], 3, 2);
+    const redD = Object.entries(a.sig.distress).filter(([, v]) => v === "R").map(([k]) => k);
+    push("distress", redD.map((k) => [true, `${k[0].toUpperCase() + k.slice(1)} in its distress zone`]).concat([[false, ""], [false, ""], [false, ""], [false, ""], [false, ""]]).slice(0, 5), 3, 2);
+    push("liquidity", [
+      [isNum(L.currentRatio) && L.currentRatio < 1, `current ratio ${isNum(L.currentRatio) ? L.currentRatio.toFixed(2) : ""} is below 1`],
+      [L.signals.cce === "R", "weak conversion of EBITDA into cash"],
+      [L.signals.dir === "R", "defensive assets cover less than 90 days of costs"],
+      [isNum(m.A.cfo[t]) && m.A.cfo[t] < 0, "operating cash flow is negative"],
+    ], 3, 2);
+    push("governance", [
+      [fl("Promoter stake falling") === "R", "promoter stake has fallen"],
+      [["R", "A"].includes(fl("Advances to revenue")), "loans and advances are high relative to revenue"],
+      [["R", "A"].includes(fl("Loan-to-equity conversion")), "debt was converted into equity"],
+      [fl("Net worth eroded") === "R", "net worth has been eroded"],
+    ], 2, 2);
+    if (t >= 2 && isNum(a.score)) {
+      const a0 = assess(m, t - 1, opts);
+      if (isNum(a0.score)) {
+        const d = a.score - a0.score, worse = Object.keys(a.pillar).filter((k) => isNum(a.pillar[k].score) && isNum(a0.pillar[k].score) && a.pillar[k].score > a0.pillar[k].score + 5);
+        push("trend", [
+          [d >= 10, `risk score rose ${d.toFixed(0)} points in a year`],
+          [d >= 20, "the rise is twice the alert threshold"],
+          [worse.length >= 2, `${worse.length} pillars worsened (${worse.map((k) => PILLARS[k].label.toLowerCase()).join(", ")})`],
+        ], 3, 2);
+      }
+    }
+    return out.sort((x, y) => (x.level === y.level ? 0 : x.level === "R" ? -1 : 1));
+  }
+
   root.Models = { fromScreener, fromWide, liquidity, cceLabel, solvency, debtCapacity, altman, ohlson, zmijewski, springate,
     fulmer, kzIndex, accruals, beneish, cScore, piotroski, aem, rem, benford, profitability, market, lifeCycle, durbinWatson,
     redFlags, quarterShare, promoter, assess, PILLARS, GRADES, IMPORT_FIELDS, DEFAULT_TACR, DEFAULT_DEBT, AEM_COEF, REM_COEF,
-    isNum, div, growth, band, MANUFACTURING, LONG_TENOR, debtFor, QUAL_LEVELS, QUAL_FACTORS, BQR_SCALE, bqr, bqrFromScore, qualSuggest, DEFAULT_POLICY, structure, covenants, orVars, ols, classShift, purchaseInv, latestFull };
+    isNum, div, growth, band, MANUFACTURING, LONG_TENOR, debtFor, QUAL_LEVELS, QUAL_FACTORS, BQR_SCALE, bqr, bqrFromScore, qualSuggest, DEFAULT_POLICY, structure, covenants, orVars, ols, classShift, purchaseInv, latestFull, alerts, ALERT_DEFS };
 })(typeof window !== "undefined" ? window : globalThis);

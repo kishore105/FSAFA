@@ -35,8 +35,8 @@ for (const f of files) {
     op: a.o ? r(a.o.p) : null, ms: a.b ? r(a.b.M, 2) : null, cs: a.c ? a.c.C : null, fs: a.p ? a.p.F : null,
     sl: r(a.acc.sloan), kz: (() => { const k = M.kzIndex(m, m.n - 1); return k ? r(k.KZ) : null; })(), da: a.ae ? r(a.ae.da) : null, bf: a.bf ? a.bf.signal : null,
     fR: a.fl.filter((x) => x.status === "R").length, fA: a.fl.filter((x) => x.status === "A").length,
-    pil: Object.fromEntries(Object.entries(a.pillar).map(([k, v]) => [k, r(v.score, 0)])),
-    sc: r(a.score, 1), g: a.grade, gl: a.gradeLabel, hist,
+    pil: Object.fromEntries(Object.entries(a.pillar).map(([k, v]) => [k, r(v.score, 2)])),
+    sc: r(a.score, 2), g: a.grade, gl: a.gradeLabel, hist,
   });
 }
 // Second pass: industry context, data-derived qualitative factors and the system BQR (60/40)
@@ -49,7 +49,7 @@ out.forEach((c) => {
   const ctx = { indMedianRisk: med(peers.map((p) => p.sc)), sizePct: M.isNum(c.sales) && sizes.length > 1 ? sizes.filter((x) => x < c.sales).length / (sizes.length - 1) : null };
   const q = M.qualSuggest(k.m, k.t, k.a, ctx);
   const b = M.bqr(k.a.score, q.levels, 0);
-  if (b) { c.bqr = b.grade; c.bql = b.label; c.bqc = r(b.combined, 1); c.bqq = r(b.qualScore, 0); }
+  if (b) { c.bqr = b.grade; c.bql = b.label; c.bqc = r(b.combined, 2); c.bqq = r(b.qualScore, 2); }
 });
 // Third pass: operating revenue expectation model estimated on the cross-section of the latest year,
 // observations outside the 1st-99th percentile of any variable trimmed (as in the AEM estimation).
@@ -65,8 +65,11 @@ const csModel = { coef: f1.b.map((x) => r(x, 6)), t: f1.t.map((x) => r(x, 2)), r
   stage2: { b: r(f2.b[1], 4), t: r(f2.t[1], 2), n: f2.n } };
 out.forEach((c) => {
   const k = keep[c.t], x = M.classShift(k.m, k.t, csModel), pi = M.purchaseInv(k.m, k.t);
+  c.al = M.alerts(k.m, k.t, k.a).map((x) => [x.code, x.level]);
   c.ue = x ? r(x.ue, 4) : null; c.csA = x ? x.signal : null; c.pi = pi && M.isNum(pi.ratio) ? r(pi.ratio, 1) : null;
 });
+const alc = {}; out.forEach((c) => c.al.forEach(([k, l]) => { alc[k] = alc[k] || { R: 0, A: 0 }; alc[k][l]++; }));
+console.log("alerts", JSON.stringify(alc), "borrowers with any red alert", out.filter((c) => c.al.some((x) => x[1] === "R")).length, "any alert", out.filter((c) => c.al.length).length);
 console.log("classification shifting model", JSON.stringify(csModel), "amber", out.filter((c) => c.csA === "A").length);
 out.sort((x, y) => (y.mcap || 0) - (x.mcap || 0));
 const universe = { built: new Date().toISOString(), count: out.length, skipped, source: "screener.in; NSE Nifty 500 constituent list", csModel, companies: out };
