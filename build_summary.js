@@ -51,8 +51,25 @@ out.forEach((c) => {
   const b = M.bqr(k.a.score, q.levels, 0);
   if (b) { c.bqr = b.grade; c.bql = b.label; c.bqc = r(b.combined, 1); c.bqq = r(b.qualScore, 0); }
 });
+// Third pass: operating revenue expectation model estimated on the cross-section of the latest year,
+// observations outside the 1st-99th percentile of any variable trimmed (as in the AEM estimation).
+const pct = (v, q) => { const a = [...v].sort((x, y) => x - y); return a[Math.min(a.length - 1, Math.max(0, Math.floor(q * (a.length - 1))))]; };
+const obs = out.map((c) => ({ c, v: M.orVars(keep[c.t].m, keep[c.t].t) })).filter((o) => o.v && [o.v.or, o.v.lor, o.v.mtb, o.v.ar].every(M.isNum));
+const keys = ["or", "lor", "mtb", "ar"], lim = Object.fromEntries(keys.map((k) => [k, [pct(obs.map((o) => o.v[k]), 0.01), pct(obs.map((o) => o.v[k]), 0.99)]]));
+const est = obs.filter((o) => keys.every((k) => o.v[k] >= lim[k][0] && o.v[k] <= lim[k][1]));
+const f1 = M.ols(est.map((o) => [o.v.lor, o.v.mtb, o.v.ar]), est.map((o) => o.v.or));
+const ue = f1.res, p90 = pct(ue, 0.9);
+const s2obs = est.map((o, i) => [o, ue[i]]).filter(([o]) => M.isNum(o.v.nor));
+const f2 = M.ols(s2obs.map(([o]) => [o.v.nor]), s2obs.map(([, u]) => u));
+const csModel = { coef: f1.b.map((x) => r(x, 6)), t: f1.t.map((x) => r(x, 2)), r2: r(f1.r2, 3), n: f1.n, p90: r(p90, 4),
+  stage2: { b: r(f2.b[1], 4), t: r(f2.t[1], 2), n: f2.n } };
+out.forEach((c) => {
+  const k = keep[c.t], x = M.classShift(k.m, k.t, csModel), pi = M.purchaseInv(k.m, k.t);
+  c.ue = x ? r(x.ue, 4) : null; c.csA = x ? x.signal : null; c.pi = pi && M.isNum(pi.ratio) ? r(pi.ratio, 1) : null;
+});
+console.log("classification shifting model", JSON.stringify(csModel), "amber", out.filter((c) => c.csA === "A").length);
 out.sort((x, y) => (y.mcap || 0) - (x.mcap || 0));
-const universe = { built: new Date().toISOString(), count: out.length, skipped, source: "screener.in; NSE Nifty 500 constituent list", companies: out };
+const universe = { built: new Date().toISOString(), count: out.length, skipped, source: "screener.in; NSE Nifty 500 constituent list", csModel, companies: out };
 fs.writeFileSync(path.join(__dirname, "data", "universe.json"), JSON.stringify(universe));
 console.log(`universe.json: ${out.length} companies`);
 const by = {}; out.forEach((c) => (by[c.g] = (by[c.g] || 0) + 1));

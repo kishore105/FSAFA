@@ -306,6 +306,36 @@ check(14, "Course worked examples (14) and Python cross-check", (fail) => {
   return pass + 6;
 });
 
+// 15. Classification shifting and purchase-to-inventory
+check(15, "Classification shifting: OLS recovers known coefficients; UE_OR and purchase-to-inventory recomputed", (fail) => {
+  let n = 0, seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const X = [], y = [];
+  for (let i = 0; i < 400; i++) { const a = rnd(), b = rnd(); X.push([a, b]); y.push(1 + 2 * a - 0.5 * b); }
+  const f = M.ols(X, y); n++;
+  if (![1, 2, -0.5].every((v, i) => Math.abs(f.b[i] - v) < 1e-9) || Math.abs(f.r2 - 1) > 1e-9) fail("OLS does not recover exact coefficients");
+  const cm = U.csModel;
+  if (!cm || cm.n < 300) fail("model missing or estimated on too few firms");
+  for (const r of rows) {
+    const raw = raws[r.t], fy = r.fy, i = raw.pl.cols.map(key).indexOf(fy), fy0 = key(raw.pl.cols[i - 1]);
+    const ta0 = rv(raw, "bs", "Total Assets", fy0), eq = z(rv(raw, "bs", "Equity Capital", fy)) + z(rv(raw, "bs", "Reserves", fy));
+    const sales = rv(raw, "pl", "Sales", fy) * ann(raw, fy), sales0 = rv(raw, "pl", "Sales", fy0) * ann(raw, fy0), rec = sv(raw, "balance-sheet", "Trade receivables", fy);
+    const mcap = raw.top && raw.top["Market Cap"];
+    if (r.ue !== null) {
+      n++;
+      const e = sales / ta0 - (cm.coef[0] + cm.coef[1] * sales0 / ta0 + cm.coef[2] * mcap / eq + cm.coef[3] * rec / ta0);
+      if (Math.abs(e - r.ue) > 0.002) fail(`${r.t}: UE_OR ${r.ue} vs ${e.toFixed(4)}`);
+    }
+    if (r.pi !== null) {
+      n++;
+      const mat = sv(raw, "profit-loss", "Material Cost", fy) * ann(raw, fy), inv = sv(raw, "balance-sheet", "Inventories", fy), inv0 = sv(raw, "balance-sheet", "Inventories", fy0);
+      const e = (mat + inv - inv0) / (inv - inv0);
+      if (Math.abs(e - r.pi) > Math.max(0.06, 0.001 * Math.abs(e))) fail(`${r.t}: purchase-to-inventory ${r.pi} vs ${e.toFixed(2)}`);
+    }
+  }
+  return n;
+});
+
 let failed = 0;
 for (const r of results) {
   const ok = r.fails.length === 0;

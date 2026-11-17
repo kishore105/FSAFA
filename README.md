@@ -33,7 +33,7 @@ The data refreshes every Sunday through the GitHub Actions workflow in `.github/
 | `assets/models.js` | All calculations. The same file runs in the browser and in the build step, so the portfolio table and borrower pages always agree |
 | `fetch_screener.py` | Downloads statements for every company into `data/companies/` |
 | `build_summary.js` | Scores every company and writes `data/universe.json` |
-| `tests/dashboard_checks.js` | 14 checks: source data, ratios and models recomputed independently, grade and BQR arithmetic, BQR balance and differentiation, loan sizing, covenants, text |
+| `tests/dashboard_checks.js` | 15 checks: source data, ratios and models recomputed independently, grade and BQR arithmetic, BQR balance and differentiation, loan sizing, covenants, classification shifting, text |
 | `tests/validate_course_examples.js`, `tests/crosscheck_python.py` | Worked examples reproduced, and an independent Python recomputation |
 
 ## Running locally

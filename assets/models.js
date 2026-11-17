@@ -55,7 +55,7 @@
       np: P("Net Profit"), eps: P("EPS in Rs"), payout: P("Dividend Payout %"),
       cogs: schedRe(raw, "profit-loss", /^(Material Cost|Manufacturing Cost|Power and Fuel|Raw Material)/i, years),
       selling, sga: selling.some(isNum) ? selling : SP("Other Expenses"), sellingReported: selling.some(isNum),
-      exceptional: SP("Exceptional items"),
+      exceptional: SP("Exceptional items"), material: SP("Material Cost"), otherIncomeNormal: SP("Other income normal"),
       eqCap: B("Equity Capital"), reserves: B("Reserves"), borrow: B("Borrowings"), otherLiab: B("Other Liabilities"),
       ta: B("Total Assets"), nfa: B("Fixed Assets"), cwip: B("CWIP"), invest: B("Investments"), otherAssets: B("Other Assets"),
       ltb: SB("Long term Borrowings"), stb: SB("Short term Borrowings"), lease: SB("Lease Liabilities"),
@@ -67,7 +67,7 @@
       debtorDays: R("Debtor Days"), invDays: R("Inventory Days"), payDays: R("Days Payable"), cccRep: R("Cash Conversion Cycle"),
     };
     // Flows of a period longer or shorter than 12 months are annualised so that they compare with year-end balances.
-    ["sales", "expenses", "ebitda", "otherIncome", "interest", "dep", "pbt", "np", "eps", "cogs", "selling", "sga", "exceptional",
+    ["sales", "expenses", "ebitda", "otherIncome", "interest", "dep", "pbt", "np", "eps", "cogs", "selling", "sga", "exceptional", "material", "otherIncomeNormal",
       "cfo", "cfi", "cff", "fcf", "capex"].forEach((k) => {
       A[k] = A[k].map((v, i) => (isNum(v) && months[i] !== 12 ? (v * 12) / months[i] : v));
     });
@@ -790,8 +790,63 @@
   }
   function fxn(x) { return isNum(x) ? x.toFixed(2) : "n/a"; }
 
+  /* ======================= 13. Classification shifting and purchase-to-inventory ======================= */
+  // Operating revenue expectation model: OR = a0 + b1 lagged OR + b2 MTB + b3 AR, every term scaled by lagged total assets.
+  // The residual is unexpected operating revenue (UE_OR). A significant negative coefficient when UE_OR is regressed on
+  // non-operating revenue (NOR) indicates that non-operating income is being reported as operating revenue.
+  function latestFull(m) { let t = m.n - 1; while (t > 0 && !(isNum(m.A.sales[t]) && isNum(m.A.ta[t]))) t--; return t; }
+  function orVars(m, t) {
+    const A = m.A;
+    if (t < 1) return null;
+    const ta0 = A.ta[t - 1], mcap = m.raw.top && m.raw.top["Market Cap"], eq = A.equity[t];
+    if (!isNum(ta0) || ta0 <= 0 || !isNum(A.sales[t]) || !isNum(A.sales[t - 1])) return null;
+    // market value is available for the current year only, so MTB (and the model) applies to the latest year
+    const mtb = t === latestFull(m) && isNum(mcap) && isNum(eq) && eq > 0 ? mcap / eq : null;
+    // non-operating revenue: Screener's "Other Income" is net of exceptional items, so the normal other income line is used
+    const oi = (i) => (A.otherIncomeNormal && isNum(A.otherIncomeNormal[i]) ? A.otherIncomeNormal[i] : A.otherIncome[i]);
+    const nor = isNum(oi(t)) ? oi(t) / ta0 : null;
+    const norPrev = t >= 2 && isNum(oi(t - 1)) && isNum(A.ta[t - 2]) && A.ta[t - 2] > 0 ? oi(t - 1) / A.ta[t - 2] : null;
+    return { or: A.sales[t] / ta0, lor: A.sales[t - 1] / ta0, mtb, ar: isNum(A.rec[t]) ? A.rec[t] / ta0 : null, nor, norPrev };
+  }
+  // Ordinary least squares with an intercept. X: rows of regressors (no constant column).
+  function ols(X, y) {
+    const n = y.length, k = X[0].length + 1, Z = X.map((r) => [1, ...r]);
+    const XtX = Array.from({ length: k }, (_, i) => Array.from({ length: k }, (_, j) => Z.reduce((s, r) => s + r[i] * r[j], 0)));
+    const Xty = Array.from({ length: k }, (_, i) => Z.reduce((s, r, q) => s + r[i] * y[q], 0));
+    // invert XtX by Gauss-Jordan elimination
+    const M2 = XtX.map((r, i) => [...r, ...Array.from({ length: k }, (_, j) => (i === j ? 1 : 0))]);
+    for (let c = 0; c < k; c++) {
+      let pv = c; for (let r = c + 1; r < k; r++) if (Math.abs(M2[r][c]) > Math.abs(M2[pv][c])) pv = r;
+      [M2[c], M2[pv]] = [M2[pv], M2[c]];
+      const d = M2[c][c]; for (let j = 0; j < 2 * k; j++) M2[c][j] /= d;
+      for (let r = 0; r < k; r++) if (r !== c) { const f = M2[r][c]; for (let j = 0; j < 2 * k; j++) M2[r][j] -= f * M2[c][j]; }
+    }
+    const inv = M2.map((r) => r.slice(k));
+    const b = inv.map((r) => r.reduce((s, v, j) => s + v * Xty[j], 0));
+    const res = Z.map((r, q) => y[q] - r.reduce((s, v, j) => s + v * b[j], 0));
+    const ybar = y.reduce((s, v) => s + v, 0) / n, sse = res.reduce((s, v) => s + v * v, 0), sst = y.reduce((s, v) => s + (v - ybar) ** 2, 0);
+    const s2 = sse / (n - k), se = inv.map((r, i) => Math.sqrt(s2 * r[i]));
+    return { b, se, t: b.map((v, i) => v / se[i]), r2: 1 - sse / sst, n, res };
+  }
+  function classShift(m, t, model) {
+    if (!model) return null;
+    const v = orVars(m, t);
+    if (!v || !isNum(v.mtb) || !isNum(v.ar)) return null;
+    const c = model.coef, fitted = c[0] + c[1] * v.lor + c[2] * v.mtb + c[3] * v.ar, ue = v.or - fitted;
+    const norDown = isNum(v.nor) && isNum(v.norPrev) ? v.nor < v.norPrev : null;
+    // amber when revenue is unusually high for the model and non-operating income fell at the same time
+    return { ...v, fitted, ue, norDown, signal: ue > model.p90 && norDown ? "A" : "G" };
+  }
+  // Coffee Day check: purchases booked against the inventory they added. Purchases = material cost + increase in inventory.
+  function purchaseInv(m, t) {
+    const A = m.A;
+    if (t < 1 || !A.material || !isNum(A.material[t]) || !isNum(A.inv[t]) || !isNum(A.inv[t - 1])) return null;
+    const dInv = A.inv[t] - A.inv[t - 1], purchases = A.material[t] + dInv;
+    return { purchases, dInv, ratio: dInv > 0 ? purchases / dInv : null };
+  }
+
   root.Models = { fromScreener, fromWide, liquidity, cceLabel, solvency, debtCapacity, altman, ohlson, zmijewski, springate,
     fulmer, kzIndex, accruals, beneish, cScore, piotroski, aem, rem, benford, profitability, market, lifeCycle, durbinWatson,
     redFlags, quarterShare, promoter, assess, PILLARS, GRADES, IMPORT_FIELDS, DEFAULT_TACR, DEFAULT_DEBT, AEM_COEF, REM_COEF,
-    isNum, div, growth, band, MANUFACTURING, LONG_TENOR, debtFor, QUAL_LEVELS, QUAL_FACTORS, BQR_SCALE, bqr, bqrFromScore, qualSuggest, DEFAULT_POLICY, structure, covenants };
+    isNum, div, growth, band, MANUFACTURING, LONG_TENOR, debtFor, QUAL_LEVELS, QUAL_FACTORS, BQR_SCALE, bqr, bqrFromScore, qualSuggest, DEFAULT_POLICY, structure, covenants, orVars, ols, classShift, purchaseInv, latestFull };
 })(typeof window !== "undefined" ? window : globalThis);
